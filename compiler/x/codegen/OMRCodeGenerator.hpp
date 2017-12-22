@@ -302,6 +302,8 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
 
    virtual bool getSupportsBitPermute();
 
+   virtual bool getSupportsFastMaskExtract(); 
+
    bool supportsMergingGuards();
 
    bool supportsAtomicAdd()                {return true;}

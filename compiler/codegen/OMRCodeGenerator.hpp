@@ -1500,6 +1500,8 @@ class OMR_EXTENSIBLE CodeGenerator
 
    virtual bool getSupportsBitPermute();
 
+   virtual bool getSupportsFastMaskExtract();
+
    bool getSupportsAutoSIMD() { return _flags4.testAny(SupportsAutoSIMD);}
    void setSupportsAutoSIMD() { _flags4.set(SupportsAutoSIMD);}
 

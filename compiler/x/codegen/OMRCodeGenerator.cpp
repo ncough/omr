@@ -198,6 +198,11 @@ void TR_X86ProcessorInfo::initialize(TR::Compilation *comp)
       }
    }
 
+bool
+OMR::X86::CodeGenerator::getSupportsFastMaskExtract()
+   {
+   return _targetProcessorInfo.supportsBMI2();
+   }
 
 void
 OMR::X86::CodeGenerator::initialize(TR::Compilation *comp)

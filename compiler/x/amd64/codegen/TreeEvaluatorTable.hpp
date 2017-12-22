@@ -755,4 +755,8 @@
    TR::TreeEvaluator::bitpermuteEvaluator,                 // TR::sbitpermute
    TR::TreeEvaluator::bitpermuteEvaluator,                 // TR::ibitpermute
    TR::TreeEvaluator::bitpermuteEvaluator,                 // TR::lbitpermute
+   TR::TreeEvaluator::maskextractEvaluator,                // TR::bmaskextract
+   TR::TreeEvaluator::maskextractEvaluator,                // TR::smaskextract
+   TR::TreeEvaluator::maskextractEvaluator,                // TR::imaskextract
+   TR::TreeEvaluator::maskextractEvaluator,                // TR::lmaskextract
    TR::TreeEvaluator::PrefetchEvaluator,                // TR::Prefetch

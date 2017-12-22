@@ -3642,6 +3642,18 @@ INSTRUCTION(PSRLQRegImm1, psrlq,
             BINARY(VEX_L128, VEX_vReg_, PREFIX_66, REX__, ESCAPE_0F__, 0x73, 2, ModRM_EXT_, Immediate_1),
             PROPERTY0(IA32OpProp_ModifiesTarget | IA32OpProp_ByteImmediate | IA32OpProp_DoubleFP | IA32OpProp_TargetRegisterInModRM | IA32OpProp_UsesTarget),
             PROPERTY1(IA32OpProp1_XMMSource | IA32OpProp1_XMMTarget)),
+//INSTRUCTION(BITEXT32RegReg, pext,
+//            BINARY(VEX_L128, VEX_vReg_, PREFIX_F3, REX__, ESCAPE_0F38, 0xF5, 0, ModRM_RM__, OpEn_R_, OpEn_V_, OpEn_M_, OpEn_NP, Immediate_0),
+//            PROPERTY0(IA32OpProp_ModifiesTarget | IA32OpProp_SourceRegisterInModRM | IA32OpProp_UsesTarget),
+//            PROPERTY1(0)),
+//INSTRUCTION(BITEXT64RegReg, pext,
+//            BINARY(VEX_L128, VEX_vReg_, PREFIX_F3, REX_W, ESCAPE_0F38, 0xF5, 0, ModRM_RM__, OpEn_R_, OpEn_V_, OpEn_M_, OpEn_NP, Immediate_0),
+//            PROPERTY0(IA32OpProp_ModifiesTarget | IA32OpProp_SourceRegisterInModRM | IA32OpProp_UsesTarget),
+//            PROPERTY1(0)),
+//INSTRUCTION(BITEXTRegMem, pext,
+//            BINARY(VEX_L128, VEX_vReg_, PREFIX_F3, REX_W, ESCAPE_0F38, 0xF5, 0, ModRM_RM__, OpEn_R_, OpEn_V_, OpEn_M_, OpEn_NP, Immediate_0),
+//            PROPERTY0(IA32OpProp_ModifiesTarget | IA32OpProp_UsesTarget),
+//            PROPERTY1(0)),
 
 // OpCodes beyond this point are pseudo instructions; they are for OMR internal usage only.
 INSTRUCTION(FENCE, Fence, // Address of binary is to be written to specified data address, SymbolReference controls code motion across fence

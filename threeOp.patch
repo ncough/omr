@@ -1,0 +1,266 @@
+diff --git a/compiler/x/codegen/OMRCodeGenerator.hpp b/compiler/x/codegen/OMRCodeGenerator.hpp
+index 2f9e28e..b50b2ca 100644
+--- a/compiler/x/codegen/OMRCodeGenerator.hpp
++++ b/compiler/x/codegen/OMRCodeGenerator.hpp
+@@ -273,12 +273,13 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
+ 
+    public:
+ 
+-   TR::Instruction* generate(TR::Node* node, TR_X86OpCodes op, TR::Register* operand0 = NULL, TR::Register* operand1 = NULL, TR::Register* operand2 = NULL, TR::Register* operand3 = NULL);
++   TR::Instruction* generate(TR::Node* node, TR_X86OpCodes op, TR::Register* operand0 = NULL, TR::Register* operand1 = NULL, TR::Register* operand2 = NULL, TR::Register* operand3 = NULL, TR::MemoryReference *mr = NULL, TR::RegisterDependencyConditions *cond=NULL);
+ 
+    TR::Linkage *createLinkage(TR_LinkageConventions lc);
+    void beginInstructionSelection();
+    void endInstructionSelection();
+ 
+    static TR_X86ProcessorInfo &getX86ProcessorInfo() {return _targetProcessorInfo;}
+ 
+diff --git a/compiler/x/codegen/OMRInstruction.hpp b/compiler/x/codegen/OMRInstruction.hpp
+index 59764ce..1a3c0d8 100644
+--- a/compiler/x/codegen/OMRInstruction.hpp
++++ b/compiler/x/codegen/OMRInstruction.hpp
+@@ -336,7 +336,7 @@ class OMR_EXTENSIBLE Instruction : public OMR::Instruction
+          escape = '\xC4';
+          R = 1;
+          X = 1;
+-         B = 1;
++         B = 0;
+          W = 0;
+          v = 0xf; //0b1111
+          }
+diff --git a/compiler/x/codegen/OMRX86Instruction.cpp b/compiler/x/codegen/OMRX86Instruction.cpp
+index 3e1af5b..777819c 100644
+--- a/compiler/x/codegen/OMRX86Instruction.cpp
++++ b/compiler/x/codegen/OMRX86Instruction.cpp
+@@ -159,8 +159,9 @@ TR::RealRegister *assignGPRegister(TR::Instruction   *instr,
+ ////////////////////////////////////////////////////////////////////////////////
+ // TR::X86InstructionExperiment:: member functions
+ ////////////////////////////////////////////////////////////////////////////////
+-void TR::X86InstructionExperiment::initialize(TR::Register* target, TR::Register* source1, TR::Register* source2)
++void TR::X86InstructionExperiment::initialize(TR::Register* target, TR::Register* source1, TR::Register* source2, TR::MemoryReference *mr)
+    {
++   mr->useRegisters(this, self()->cg());
+    _registers[0] = target;
+    _registers[1] = source1;
+    _registers[2] = source2;
+@@ -177,7 +178,29 @@ void TR::X86InstructionExperiment::initialize(TR::Register* target, TR::Register
+ 
+ void TR::X86InstructionAVX::assignRegisters(TR_RegisterKinds kindsToBeAssigned)
+    {
+-   TR_ASSERT(!getDependencyConditions(), "AVX Instructions should NOT have dependencies.");
++   aboutToAssignMemRef(getMemoryReference());
++
++
++
++   if (getDependencyConditions())
++      {
++
++      if ((cg()->getAssignmentDirection() == cg()->Backward))
++         {
++         getDependencyConditions()->assignPostConditionRegisters(this, kindsToBeAssigned, cg());
++         }
++      else
++         {
++         getDependencyConditions()->assignPreConditionRegisters(this, kindsToBeAssigned, cg());
++         }
++
++      }
++
++   if (kindsToBeAssigned & TR_GPR_Mask)
++      {
++      getMemoryReference()->assignRegisters(this, cg());
++      }
++
+    for (int32_t i = 0; i < NumberOfOperands; i++)
+       {
+       if (_registers[i])
+@@ -202,7 +225,7 @@ void TR::X86InstructionAVX::assignRegisters(TR_RegisterKinds kindsToBeAssigned)
+             realRegister = virtRegister->getAssignedRealRegister();
+             if (realRegister == NULL)
+                {
+-               realRegister = assignGPRegister(this, virtRegister, TR_QuadWordReg, cg());
++               realRegister = assignGPRegister(this, virtRegister, TR_WordReg, cg());
+                }
+             if (virtRegister->decFutureUseCount() == 0 &&
+                 realRegister->getState() != TR::RealRegister::Locked)
+@@ -219,6 +242,20 @@ void TR::X86InstructionAVX::assignRegisters(TR_RegisterKinds kindsToBeAssigned)
+          _registers[i] = realRegisters[i];
+          }
+       }
++
++   if (getDependencyConditions())
++      {
++
++      if ((cg()->getAssignmentDirection() == cg()->Backward))
++         {
++         getDependencyConditions()->assignPreConditionRegisters(this, kindsToBeAssigned, cg());
++         }
++      else
++         {
++         getDependencyConditions()->assignPostConditionRegisters(this, kindsToBeAssigned, cg());
++         }
++
++      }
+    }
+ 
+ ////////////////////////////////////////////////////////////////////////////////
+@@ -3932,10 +3969,11 @@ TR::AMD64RegImm64SymInstruction::autoSetReloKind()
+ ////////////////////////////////////////////////////////////////////////////////
+ // Generate methods
+ ////////////////////////////////////////////////////////////////////////////////
+-TR::Instruction* OMR::X86::CodeGenerator::generate(TR::Node* node, TR_X86OpCodes op, TR::Register* operand0, TR::Register* operand1, TR::Register* operand2, TR::Register* operand3)
++TR::Instruction* OMR::X86::CodeGenerator::generate(TR::Node* node, TR_X86OpCodes op, TR::Register* operand0, TR::Register* operand1, TR::Register* operand2, TR::Register* operand3, TR::MemoryReference* mr, TR::RegisterDependencyConditions  *cond)
+    {
+-   auto ret = new (trHeapMemory()) TR::X86InstructionExperiment(node, op, (TR::CodeGenerator*)this);
+-   ret->initialize(operand0, operand1, operand2);
++   auto ret = new (trHeapMemory()) TR::X86InstructionExperiment(node, op, (TR::CodeGenerator*)this, mr, cond);
++   ret->initialize(operand0, operand1, NULL, mr);
++   ret->setMemoryReference(mr, (TR::CodeGenerator*)this);
+    return ret;
+    }
+ 
+diff --git a/compiler/x/codegen/OMRX86Instruction.hpp b/compiler/x/codegen/OMRX86Instruction.hpp
+index a8ab5fa..b0adc0c 100644
+--- a/compiler/x/codegen/OMRX86Instruction.hpp
++++ b/compiler/x/codegen/OMRX86Instruction.hpp
+@@ -89,10 +89,14 @@ namespace TR
+ class X86InstructionAVX : public TR::Instruction
+    {
+    protected:
+-   X86InstructionAVX(TR::Node* node, TR_X86OpCodes op, TR::CodeGenerator* cg) : TR::Instruction(node, op, cg) {}
++   X86InstructionAVX(TR::Node* node,
++      TR_X86OpCodes op,
++      TR::CodeGenerator* cg,
++      TR::RegisterDependencyConditions *cond) : TR::Instruction(cond, node, op, cg) {}
+    public:
+-   static const int32_t NumberOfOperands = 3;
++   static const int32_t NumberOfOperands = 2;
+    TR::Register* _registers[NumberOfOperands];
++
+    virtual char* description() { return "X86EXP"; }
+    virtual Kind getKind() { return IsEXP; }
+    virtual void assignRegisters(TR_RegisterKinds kindsToBeAssigned);
+@@ -122,18 +126,53 @@ class X86InstructionAVX : public TR::Instruction
+ class X86InstructionExperiment : public X86InstructionAVX
+    {
+    public:
+-   void initialize(TR::Register* target, TR::Register* source1, TR::Register* source2);
++   void initialize(TR::Register* target, TR::Register* source1, TR::Register* source2, TR::MemoryReference *mr);
++   TR::MemoryReference  *_memoryReference;
++
++   X86InstructionExperiment(TR::Node* node,
++      TR_X86OpCodes op,
++      TR::CodeGenerator* cg,
++      TR::MemoryReference *mr,
++      TR::RegisterDependencyConditions *cond) : X86InstructionAVX(node, op, cg, cond), _memoryReference(NULL) {}
++
++
++   virtual TR::MemoryReference  *getMemoryReference() {return _memoryReference;}
++   TR::MemoryReference  *setMemoryReference(TR::MemoryReference  *p, TR::CodeGenerator *cg)
++      {
++      _memoryReference = p;
++      if (p->getUnresolvedDataSnippet() != NULL)
++         {
++         padUnresolvedReferenceInstruction(this, p, cg);
++         }
++
++      if (!cg->comp()->getOption(TR_DisableNewX86VolatileSupport) && TR::Compiler->target.is32Bit())
++         {
++         int32_t barrier = memoryBarrierRequired(this->getOpCode(), p, cg, true);
++
++         if (barrier)
++            insertUnresolvedReferenceInstructionMemoryBarrier(cg, barrier, this, p);
++         }
++
++      return p;
++      }
+ 
+-   X86InstructionExperiment(TR::Node* node, TR_X86OpCodes op, TR::CodeGenerator* cg) : X86InstructionAVX(node, op, cg) {}
+    virtual uint8_t* generateBinaryEncoding();
+    virtual int32_t  estimateBinaryLength(int32_t currentEstimate);
+    virtual uint8_t  getBinaryLengthLowerBound();
+    virtual bool refsRegister(TR::Register* reg)
+       {
++      if (getMemoryReference()->refsRegister(reg))
++         return true;
++      else if (getDependencyConditions())
++         {
++         return getDependencyConditions()->refsRegister(reg);
++         }
+       return usesRegister(reg);
+       }
+    virtual bool usesRegister(TR::Register* reg)
+       {
++      if (getMemoryReference()->refsRegister(reg))
++         return true;
+       for (int32_t i = 0; i < NumberOfOperands; i++)
+          {
+          if (_registers[i] == reg)
+diff --git a/compiler/x/codegen/X86BinaryEncoding.cpp b/compiler/x/codegen/X86BinaryEncoding.cpp
+index a93e3fc..996733d 100755
+--- a/compiler/x/codegen/X86BinaryEncoding.cpp
++++ b/compiler/x/codegen/X86BinaryEncoding.cpp
+@@ -213,7 +213,7 @@ uint8_t* TR::X86InstructionExperiment::generateBinaryEncoding()
+ 
+       uint8_t operand0 = _registers[0] ? toRealRegister(_registers[0])->getRegisterNumber() : TR::RealRegister::NoReg;
+       uint8_t operand1 = _registers[1] ? toRealRegister(_registers[1])->getRegisterNumber() : TR::RealRegister::NoReg;
+-      uint8_t operand2 = _registers[2] ? toRealRegister(_registers[2])->getRegisterNumber() : TR::RealRegister::NoReg;
++      uint8_t operand2 = toRealRegister(self()->getMemoryReference()->getBaseRegister())->getRegisterNumber();
+       uint8_t operand3 = _registers[3] ? toRealRegister(_registers[3])->getRegisterNumber() : TR::RealRegister::NoReg;
+       cursor = self()->getOpCode().binary(cursor, operand0, operand1, operand2, operand3);
+ 
+diff --git a/compiler/x/codegen/X86Debug.cpp b/compiler/x/codegen/X86Debug.cpp
+index c7dc9e1..157eb31 100644
+--- a/compiler/x/codegen/X86Debug.cpp
++++ b/compiler/x/codegen/X86Debug.cpp
+@@ -418,7 +418,10 @@ TR_Debug::print(TR::FILE *pOutFile, TR::X86InstructionExperiment* instr)
+          }
+       }
+ 
++   print(pOutFile, instr->getMemoryReference(), getTargetSizeFromInstruction(instr));
+    printInstructionComment(pOutFile, 2, instr);
++   printMemoryReferenceComment(pOutFile, instr->getMemoryReference());
++
+    dumpDependencies(pOutFile, instr);
+    trfflush(pOutFile);
+    }
+diff --git a/compiler/x/codegen/X86Ops_inlines.hpp b/compiler/x/codegen/X86Ops_inlines.hpp
+index 4990458..ab3190d 100644
+--- a/compiler/x/codegen/X86Ops_inlines.hpp
++++ b/compiler/x/codegen/X86Ops_inlines.hpp
+@@ -47,6 +41,8 @@ template <typename TBuffer> inline typename TBuffer::cursor_t TR_X86OpCode::OpCo
+    vex.ApplyOperand(operand_encoding2, operand2);
+    vex.ApplyOperand(operand_encoding3, operand3);
+ 
++   vex.modrm.setBase();
++
+    if (supportsAVX() && allowsAVX())
+       {
+       if (vex.CanBeShortened())
+@@ -55,7 +51,25 @@ template <typename TBuffer> inline typename TBuffer::cursor_t TR_X86OpCode::OpCo
+          }
+       else
+          {
+-         buffer.append(vex);
++         if (operand2 == TR::RealRegister::ebp || operand2 == TR::RealRegister::r13)
++            {
++            // In a different addressing mode, need to change mode and add a 0 displacement
++            vex.modrm.setMod(0x01);
++            buffer.append(vex);
++            buffer.append('\x00');
++            }
++         else if (operand2 == TR::RealRegister::esp || operand2 == TR::RealRegister::r12)
++            {
++            // In a different addressing mode, need to generate a SIB
++            // SIB.scale: 00
++            // SIB.index: 0|100 (first bit is ~VEX.X)
++            // SIB.base : B|100 (first bit ix ~VEX.B)
++            vex.X = 1;  
++            buffer.append(vex);
++            buffer.append('\x24');
++            }
++         else
++            buffer.append(vex);
+          }
+       }
+    else

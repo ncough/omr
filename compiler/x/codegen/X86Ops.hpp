@@ -52,6 +52,7 @@ inline TR_X86OpCodes SizeParameterizedOpCode(bool is64Bit =
    return is64Bit ? Op64 : Op32;
    }
 
+#define BITEXTRegReg   SizeParameterizedOpCode<BITEXT64RegReg  , BITEXT32RegReg  >
 #define BSFRegReg      SizeParameterizedOpCode<BSF8RegReg      , BSF4RegReg      >
 #define BSWAPReg       SizeParameterizedOpCode<BSWAP8Reg       , BSWAP4Reg       >
 #define BSRRegReg      SizeParameterizedOpCode<BSR8RegReg      , BSR4RegReg      >

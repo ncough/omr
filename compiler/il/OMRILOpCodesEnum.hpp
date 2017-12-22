@@ -832,6 +832,11 @@
    ibitpermute,
    lbitpermute,
 
+   bmaskextract,
+   smaskextract,
+   imaskextract,
+   lmaskextract,
+
    Prefetch, // Prefetch
 
 

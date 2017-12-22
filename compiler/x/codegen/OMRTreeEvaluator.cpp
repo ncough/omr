@@ -6154,3 +6154,33 @@ OMR::X86::TreeEvaluator::bitpermuteEvaluator(TR::Node *node, TR::CodeGenerator *
 
    return resultReg;
    }
+
+TR::Register *
+OMR::X86::TreeEvaluator::maskextractEvaluator(TR::Node *node, TR::CodeGenerator *cg)
+   {
+   TR_ASSERT(node->getNumChildren() == 2, "Wrong number of children in maskextractEvaluator");
+   TR::Node *value = node->getFirstChild();
+   TR::Node *mask = node->getSecondChild();
+
+   auto rs1 = cg->evaluate(value);
+
+   // This evaluator assumes the mask is loaded from memory and tries to optimize for it
+   TR::Node *addrConst = mask->getFirstChild();
+   while (addrConst->getOpCodeValue() != TR::aconst)
+      {
+      addrConst = addrConst->getFirstChild();
+      }
+
+   auto rs2 = cg->evaluate(addrConst);
+   auto resultReg = cg->allocateRegister(rs1->getKind());
+
+   //Needs three operand AVX with a memory address
+   //TR::MemoryReference *mr = generateX86MemoryReference(rs2, 0, cg);
+   //cg->generate(node, BITEXTRegReg(TR::TreeEvaluator::getNodeIs64Bit(value, cg)), resultReg, rs1, NULL, NULL, mr);
+
+   node->setRegister(resultReg);
+   cg->decReferenceCount(value);
+   cg->decReferenceCount(mask);
+
+   return resultReg;
+   }
