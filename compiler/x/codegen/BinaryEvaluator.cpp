@@ -684,6 +684,112 @@ TR::Register *OMR::X86::TreeEvaluator::integerDualAddOrSubEvaluator(TR::Node *no
    return node->getRegister();
    }
 
+TR::MemoryReference *OMR::X86::TreeEvaluator::hack(TR::Node *node, TR::CodeGenerator *cg)
+   {
+   // Make sure this is actually what we want
+   if (node->getOpCodeValue() != TR::aladd)
+      return NULL;
+
+   bool                 nodeIs64Bit    = TR::TreeEvaluator::getNodeIs64Bit(node, cg);
+   TR::Node            *firstChild     = node->getFirstChild();
+   TR::Node            *secondChild    = node->getSecondChild();
+   TR::ILOpCode         &firstOp        = firstChild->getOpCode();
+   TR::ILOpCode         &secondOp       = secondChild->getOpCode();
+   TR::MemoryReference *leaMR          = NULL;
+   int32_t              stride         = 0;
+   int32_t              stride1        = 0;
+   int32_t              stride2        = 0;
+   TR::Node            *indexNode      = NULL;
+   TR::Node            *baseNode       = NULL;
+   TR::Node            *constNode      = NULL;
+   TR::Register        *targetRegister = NULL;
+   TR::Register        *indexRegister  = NULL;
+
+   intptrj_t dummyConstValue = 0;
+
+   if (secondOp.isLoadConst())
+      {
+      constNode = secondChild;
+      }
+   if (firstChild->getRegister() == NULL && firstChild->getReferenceCount() == 1)
+      {
+      stride1 = TR::MemoryReference::getStrideForNode(firstChild, cg);
+      }
+   if (secondChild->getRegister() == NULL && secondChild->getReferenceCount() == 1)
+      {
+      stride2 = TR::MemoryReference::getStrideForNode(secondChild, cg);
+      }
+   if (stride1 | stride2)
+      {
+      if (stride1)
+         {
+         indexNode = firstChild;
+         stride    = stride1;
+         baseNode  = secondChild;
+         }
+      else
+         {
+         indexNode = secondChild;
+         stride    = stride2;
+         baseNode  = firstChild;
+         }
+      }
+   if (indexNode)
+      {
+      // add           (** children may be reversed **)
+      //    baseNode      (possibly also constNode)
+      //    mul/shl       (indexNode)
+      //       ?          (into indexRegister)
+      //       stride
+      //
+
+      indexRegister = cg->evaluate(indexNode->getFirstChild());
+      if (constNode)
+         {
+         // can be a long for an aladd
+         if (constNode->getOpCodeValue() == TR::lconst)
+            leaMR = generateX86MemoryReference(NULL,
+                                            indexRegister,
+                                            stride,
+                                            constNode->getLongInt(), cg);
+         else
+            leaMR = generateX86MemoryReference(NULL,
+                                            indexRegister,
+                                            stride,
+                                            constNode->getInt(), cg);
+         }
+      else if (baseNode->getRegister()       == NULL    &&
+               baseNode->getReferenceCount() == 1       &&
+               baseNode->getOpCode().isAdd()            &&
+               baseNode->getSecondChild()->getOpCode().isLoadConst() &&
+               TR::TreeEvaluator::constNodeValueIs32BitSigned(baseNode->getSecondChild(), &dummyConstValue, cg))
+         {
+         TR_ASSERT(!constNode, "cannot have two const nodes in this pattern");
+         constNode = baseNode->getSecondChild();
+         leaMR = generateX86MemoryReference(cg->evaluate(baseNode->getFirstChild()),
+                                         indexRegister,
+                                         stride,
+                                         TR::TreeEvaluator::integerConstNodeValue(constNode, cg), cg);
+         }
+      else
+         {
+         leaMR = generateX86MemoryReference(cg->evaluate(baseNode),
+                                         indexRegister,
+                                         stride,
+                                         0, cg);
+         }
+      cg->decReferenceCount(indexNode->getFirstChild());
+      cg->decReferenceCount(indexNode->getSecondChild());
+      cg->decReferenceCount(indexNode);
+      if (constNode)
+         {
+         cg->decReferenceCount(constNode);
+         }
+      return leaMR;
+      }
+   return NULL;
+   }
+
 TR::Register *OMR::X86::TreeEvaluator::integerAddEvaluator(TR::Node *node, TR::CodeGenerator *cg)
    {
    const TR::ILOpCodes  opCode              = node->getOpCodeValue();
@@ -744,10 +850,14 @@ TR::Register *OMR::X86::TreeEvaluator::integerAddEvaluator(TR::Node *node, TR::C
             tempMR = generateX86MemoryReference(*reg->getMemRef(), 0, cg);
             oursIsTheOnlyMemRef = false;
             }
-         else
+         else if (firstChild->getOpCode().isLoadIndirect())
             {
+            tempMR = TR::TreeEvaluator::hack(firstChild->getFirstChild(), cg);
+            if (!tempMR)
+               tempMR = generateX86MemoryReference(firstChild, cg);
+            } 
+         else
             tempMR = generateX86MemoryReference(firstChild, cg);
-            }
          }
 
       intptrj_t constValue;
@@ -1381,6 +1491,12 @@ TR::Register *OMR::X86::TreeEvaluator::integerSubEvaluator(TR::Node *node, TR::C
          TR::Register *reg = cg->evaluate(firstChild);
          tempMR = generateX86MemoryReference(*reg->getMemRef(), 0, cg);
          oursIsTheOnlyMemRef = false;
+         }
+      else if (firstChild->getOpCode().isLoadIndirect())
+         {
+         tempMR = TR::TreeEvaluator::hack(firstChild->getFirstChild(), cg);
+         if (!tempMR)
+            tempMR = generateX86MemoryReference(firstChild, cg, false);
          }
       else
          {
